@@ -1,0 +1,48 @@
+stages:
+  - build-frontend
+  - build-backend
+  - push-to-ecr
+  - trigger-eks
+
+variables:
+  # AWS Variables
+  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+  AWS_REGION: $AWS_REGION
+#Yet to create:
+  ECR_REGISTRY: $AWS_ECR_REGISTRY
+  EKS_CLUSTER_NAME: $AWS_EKS_CLUSTER_NAME
+
+frontend_image:
+  stage: build-frontend
+  script:
+    - cd frontend
+    - docker build -t $ECR_REGISTRY/frontend:$CI_COMMIT_SHORT_SHA .
+  only:
+    - master
+
+backend_image:
+  stage: build-backend
+  script:
+    - cd backend
+    - docker build -t $ECR_REGISTRY/backend:$CI_COMMIT_SHORT_SHA .
+  only:
+    - master
+
+push_to_ecr:
+  stage: push-to-ecr
+  script:
+    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+    - docker push $ECR_REGISTRY/frontend:$CI_COMMIT_SHORT_SHA
+    - docker push $ECR_REGISTRY/backend:$CI_COMMIT_SHORT_SHA
+  only:
+    - master
+
+trigger_eks:
+  stage: trigger-eks
+  script:
+    - aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
+    - kubectl set image deployment/frontend-deployment frontend=$ECR_REGISTRY/frontend:$CI_COMMIT_SHORT_SHA
+    - kubectl set image deployment/backend-deployment backend=$ECR_REGISTRY/backend:$CI_COMMIT_SHORT_SHA
+  only:
+    - master
